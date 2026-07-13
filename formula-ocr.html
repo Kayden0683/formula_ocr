@@ -1,0 +1,1908 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>自定义公式OCR</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <style>
+        /* ===== 样式（保持原有风格，新增代码块样式） ===== */
+        :root {
+            --njupt-blue: #0055A4;
+            --primary: var(--njupt-blue);
+            --primary-dark: #003D7A;
+            --primary-light: #4A8BCF;
+            --bg: #F5F9FF;
+            --bg-card: #FFFFFF;
+            --bg-card-hover: #F0F6FF;
+            --text: #1A2A3A;
+            --text-secondary: #4A5A6A;
+            --border: #D0DCE8;
+            --shadow: 0 12px 40px rgba(0, 85, 164, 0.15);
+            --radius: 20px;
+            --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: var(--font);
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 24px 16px 40px;
+            position: relative;
+            transition: background-image 0.3s;
+        }
+        #bg-layer {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -1;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            opacity: 0;
+            transition: opacity 0.5s;
+            pointer-events: none;
+        }
+        .app {
+            max-width: 1024px;
+            width: 100%;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 0 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+            border-bottom: 2px solid rgba(0,85,164,0.1);
+            margin-bottom: 16px;
+        }
+        .logo-group {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .avatar-wrapper {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            overflow: hidden;
+            cursor: pointer;
+            flex-shrink: 0;
+            border: 2px solid var(--njupt-blue);
+            background: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--njupt-blue);
+            transition: box-shadow 0.2s;
+            box-shadow: 0 4px 12px rgba(0,85,164,0.2);
+        }
+        .avatar-wrapper:hover { box-shadow: 0 6px 20px rgba(0,85,164,0.3); }
+        .avatar-wrapper img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .avatar-wrapper span {
+            font-size: 28px;
+            font-weight: 700;
+        }
+        #avatarInput, #bgInput { display: none; }
+
+        .logo-text {
+            display: flex;
+            flex-direction: column;
+        }
+        .logo-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text);
+            letter-spacing: -0.3px;
+            line-height: 1.2;
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        .logo-title:hover { background: rgba(0,85,164,0.06); }
+        .logo-title span {
+            background: linear-gradient(135deg, var(--njupt-blue), var(--primary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .logo-title input {
+            font-size: 24px;
+            font-weight: 700;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid var(--njupt-blue);
+            outline: none;
+            color: var(--text);
+            width: 100%;
+            font-family: var(--font);
+            padding: 0 4px;
+        }
+        .logo-sub {
+            font-size: 13px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        .logo-sub:hover { background: rgba(0,85,164,0.06); }
+        .logo-sub input {
+            font-size: 13px;
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid var(--text-secondary);
+            outline: none;
+            color: var(--text-secondary);
+            font-family: var(--font);
+            padding: 0 4px;
+            width: 100%;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .btn {
+            padding: 8px 18px;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            font-family: var(--font);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-primary {
+            background: var(--njupt-blue);
+            color: #fff;
+        }
+        .btn-primary:hover { background: var(--primary-dark); transform: scale(0.97); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-outline {
+            background: transparent;
+            border: 1.5px solid var(--border);
+            color: var(--text-secondary);
+        }
+        .btn-outline:hover { border-color: var(--njupt-blue); color: var(--njupt-blue); background: rgba(0,85,164,0.05); }
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-secondary);
+            padding: 8px 12px;
+        }
+        .btn-ghost:hover { color: var(--njupt-blue); background: rgba(0,85,164,0.06); }
+        .btn-success {
+            background: #2ecc71;
+            color: #fff;
+        }
+        .btn-success:hover { background: #27ae60; transform: scale(0.97); }
+        .badge-status {
+            font-size: 12px;
+            padding: 4px 14px;
+            border-radius: 20px;
+            background: rgba(0,85,164,0.08);
+            color: var(--njupt-blue);
+            border: 1px solid rgba(0,85,164,0.15);
+        }
+        .mode-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 6px;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            flex-wrap: wrap;
+        }
+        .mode-tab {
+            flex: 1;
+            min-width: 100px;
+            text-align: center;
+            padding: 10px 12px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 15px;
+            cursor: pointer;
+            transition: 0.2s;
+            color: var(--text-secondary);
+            background: transparent;
+            border: none;
+            font-family: var(--font);
+        }
+        .mode-tab:hover { background: rgba(0,85,164,0.06); }
+        .mode-tab.active {
+            background: var(--njupt-blue);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(0,85,164,0.25);
+        }
+        .settings-panel {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 20px 24px;
+            margin-bottom: 24px;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            display: none;
+        }
+        .settings-panel.open { display: block; }
+        .settings-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        .settings-row label {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            min-width: 80px;
+        }
+        .settings-row input, .settings-row select {
+            flex: 1;
+            min-width: 160px;
+            padding: 10px 16px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+            font-size: 14px;
+            transition: 0.2s;
+        }
+        .settings-row input:focus, .settings-row select:focus {
+            outline: none;
+            border-color: var(--njupt-blue);
+            box-shadow: 0 0 0 3px rgba(0,85,164,0.12);
+        }
+        .settings-row input[type="range"] {
+            padding: 0;
+            min-width: 120px;
+            flex: 2;
+            background: transparent;
+            accent-color: var(--njupt-blue);
+        }
+        .settings-row input[type="range"]::-webkit-slider-runnable-track {
+            height: 6px;
+            background: var(--border);
+            border-radius: 6px;
+        }
+        .settings-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: var(--njupt-blue);
+            border-radius: 50%;
+            margin-top: -6px;
+            cursor: pointer;
+        }
+        .settings-row .range-value {
+            min-width: 40px;
+            text-align: center;
+            font-weight: 600;
+            color: var(--njupt-blue);
+        }
+        .settings-hint {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 8px;
+        }
+        .settings-hint a { color: var(--njupt-blue); text-decoration: none; }
+        .settings-hint a:hover { text-decoration: underline; }
+        .upload-zone {
+            background: var(--bg-card);
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 48px 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.25s;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow);
+        }
+        .upload-zone:hover { border-color: var(--njupt-blue); background: var(--bg-card-hover); }
+        .upload-zone.drag-over { border-color: var(--njupt-blue); background: rgba(0,85,164,0.05); transform: scale(1.01); }
+        .upload-zone.has-image { padding: 16px; border-style: solid; border-color: var(--njupt-blue); }
+        .upload-icon { font-size: 48px; display: block; margin-bottom: 8px; }
+        .upload-title { font-size: 20px; font-weight: 600; margin-bottom: 4px; color: var(--text); }
+        .upload-sub { font-size: 14px; color: var(--text-secondary); }
+        .upload-sub strong { color: var(--njupt-blue); }
+        .upload-preview { display: none; max-height: 320px; border-radius: 12px; overflow: hidden; margin: 0 auto; }
+        .upload-preview img { max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 12px; }
+        .upload-zone.has-image .upload-preview { display: block; }
+        .upload-zone.has-image .upload-placeholder { display: none; }
+        .upload-actions {
+            display: none;
+            margin-top: 16px;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .upload-zone.has-image .upload-actions { display: flex; }
+        .progress-wrap {
+            display: none;
+            margin-top: 16px;
+            background: var(--bg);
+            border-radius: 8px;
+            height: 6px;
+            overflow: hidden;
+        }
+        .progress-wrap.active { display: block; }
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--njupt-blue), var(--primary-light));
+            transition: width 0.3s ease;
+        }
+        .progress-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 6px;
+            text-align: center;
+        }
+        .result-area {
+            display: none;
+            margin-top: 24px;
+        }
+        .result-area.active { display: block; }
+        .result-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 700px) { .result-grid { grid-template-columns: 1fr; } }
+        .result-card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+        .result-card-header {
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-secondary);
+            background: rgba(0,85,164,0.02);
+        }
+        .result-card-body {
+            padding: 16px 20px;
+            min-height: 100px;
+            max-height: 280px;
+            overflow-y: auto;
+            font-size: 15px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            color: #1A2A3A;
+            background: #FFFFFF;
+        }
+        .result-card-body .empty-hint {
+            color: var(--text-secondary);
+            font-style: italic;
+            font-family: var(--font);
+        }
+        .result-card-body .latex-render {
+            font-family: var(--font);
+            white-space: normal;
+            font-size: 18px;
+            color: var(--text);
+        }
+        .result-card-body::-webkit-scrollbar { width: 5px; }
+        .result-card-body::-webkit-scrollbar-track { background: transparent; }
+        .result-card-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+
+        .batch-result-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+        }
+        .batch-result-table th {
+            background: rgba(0,85,164,0.06);
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-secondary);
+            border-bottom: 2px solid var(--border);
+        }
+        .batch-result-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+        .batch-result-table tr:last-child td { border-bottom: none; }
+        .batch-result-table .formula-render {
+            font-size: 18px;
+            padding: 4px 0;
+            min-height: 40px;
+        }
+        .batch-result-table .formula-latex {
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            word-break: break-all;
+            color: #1A2A3A;
+        }
+        .batch-result-table .copy-btn-sm {
+            padding: 4px 10px;
+            font-size: 12px;
+            background: var(--njupt-blue);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .batch-result-table .copy-btn-sm:hover { background: var(--primary-dark); }
+        .batch-actions {
+            margin-top: 16px;
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        /* 文本整理模式 */
+        .text-mode-area {
+            display: none;
+            margin-top: 10px;
+        }
+        .text-mode-area textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 16px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text);
+            font-size: 15px;
+            font-family: var(--font);
+            resize: vertical;
+            box-shadow: var(--shadow);
+            transition: 0.2s;
+        }
+        .text-mode-area textarea:focus {
+            outline: none;
+            border-color: var(--njupt-blue);
+            box-shadow: 0 0 0 3px rgba(0,85,164,0.12);
+        }
+        .text-mode-area .text-actions {
+            display: flex;
+            gap: 12px;
+            margin: 12px 0 20px;
+        }
+        .text-output {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            padding: 16px 20px;
+            min-height: 150px;
+            max-height: 500px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-size: 15px;
+            line-height: 1.7;
+            color: var(--text);
+        }
+        .text-output .empty-hint {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+        .text-output-actions {
+            margin-top: 12px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        /* 公式助手模式 */
+        .chat-mode-area {
+            display: none;
+            margin-top: 10px;
+        }
+        .chat-mode-area .chat-input-area {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .chat-mode-area .chat-input-area input {
+            flex: 1;
+            padding: 10px 16px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text);
+            font-size: 15px;
+            font-family: var(--font);
+            transition: 0.2s;
+        }
+        .chat-mode-area .chat-input-area input:focus {
+            outline: none;
+            border-color: var(--njupt-blue);
+            box-shadow: 0 0 0 3px rgba(0,85,164,0.12);
+        }
+        .chat-output {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            padding: 16px 20px;
+            min-height: 200px;
+            max-height: 500px;
+            overflow-y: auto;
+            font-size: 15px;
+            line-height: 1.7;
+            color: var(--text);
+        }
+        .chat-output .empty-hint {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+        .chat-output .latex-code-block {
+            background: #f0f2f5;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            margin: 8px 0;
+            border-left: 4px solid var(--njupt-blue);
+        }
+        .chat-output .latex-render {
+            display: block;
+            margin: 8px 0;
+            font-size: 18px;
+        }
+        .chat-output .latex-render .katex-display {
+            margin: 8px 0;
+        }
+        .chat-actions {
+            margin-top: 12px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 9999;
+            max-width: 380px;
+        }
+        .toast {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 18px;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.12);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            animation: slideUp 0.25s ease;
+        }
+        .toast.success { border-left: 4px solid #2ecc71; }
+        .toast.error { border-left: 4px solid #e74c3c; }
+        .toast.info { border-left: 4px solid var(--njupt-blue); }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .hidden { display: none !important; }
+        .flex { display: flex; align-items: center; gap: 8px; }
+        .njupt-watermark {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            opacity: 0.6;
+            border-top: 1px solid var(--border);
+            padding-top: 20px;
+            cursor: pointer;
+            padding: 20px 8px 8px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        .njupt-watermark:hover { background: rgba(0,85,164,0.04); }
+        .njupt-watermark input {
+            font-size: 13px;
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid var(--text-secondary);
+            outline: none;
+            color: var(--text-secondary);
+            font-family: var(--font);
+            padding: 0 4px;
+            width: 100%;
+            text-align: center;
+        }
+        .njupt-watermark span { color: var(--njupt-blue); font-weight: 600; }
+        @media (max-width: 480px) {
+            .header { flex-direction: column; align-items: stretch; }
+            .logo-title { font-size: 20px; }
+            .logo-title input { font-size: 20px; }
+            .avatar-wrapper { width: 48px; height: 48px; }
+            .settings-row { flex-direction: column; align-items: stretch; }
+            .settings-row input, .settings-row select { min-width: unset; }
+            .upload-zone { padding: 32px 16px; }
+            .batch-result-table td { padding: 8px 10px; }
+            .batch-result-table .formula-render { font-size: 15px; }
+            .mode-tab { min-width: 70px; font-size: 13px; padding: 8px 6px; }
+            .chat-mode-area .chat-input-area { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div id="bg-layer"></div>
+
+    <div class="app">
+        <header class="header">
+            <div class="logo-group">
+                <div class="avatar-wrapper" id="avatarWrapper" title="点击更换头像">
+                    <span id="avatarPlaceholder">📚</span>
+                    <img id="avatarImg" style="display:none;" alt="头像" />
+                </div>
+                <input type="file" id="avatarInput" accept="image/*" />
+                <div class="logo-text">
+                    <div class="logo-title" id="titleEditable">
+                        <span id="titleDisplay">mathcheap用不了所以我自己写了一个</span>
+                    </div>
+                    <div class="logo-sub" id="subEditable">
+                        <span id="subDisplay">点击设置您的个性签名</span>
+                    </div>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-ghost" id="settingsToggle">⚙️ 设置</button>
+                <span class="badge-status" id="apiStatus">🔴 未配置</span>
+            </div>
+        </header>
+
+        <div class="mode-tabs">
+            <button class="mode-tab active" data-mode="single">📐 单公式</button>
+            <button class="mode-tab" data-mode="batch">📚 批量公式</button>
+            <button class="mode-tab" data-mode="text">📝 整理AI乱码</button>
+            <button class="mode-tab" data-mode="chat">💬 公式助手</button>
+        </div>
+
+        <div class="settings-panel" id="settingsPanel">
+            <div class="settings-row">
+                <label>Kimi API Key</label>
+                <input type="password" id="apiKeyInput" placeholder="用于公式识别" />
+            </div>
+            <div class="settings-row">
+                <label>DeepSeek API Key</label>
+                <input type="password" id="deepseekKeyInput" placeholder="用于公式助手" />
+            </div>
+            <div class="settings-row">
+                <label>端点</label>
+                <select id="apiEndpointSelect">
+                    <option value="https://api.moonshot.cn/v1">Kimi 国内 (moonshot.cn)</option>
+                    <option value="https://api.moonshot.ai/v1">Kimi 国际 (moonshot.ai)</option>
+                </select>
+            </div>
+            <div class="settings-row">
+                <label>压缩尺寸</label>
+                <input type="range" id="maxSizeRange" min="512" max="1536" value="768" step="64" />
+                <span id="maxSizeLabel">768</span>
+            </div>
+            <div class="settings-row">
+                <label>超时(秒)</label>
+                <input type="number" id="timeoutInput" value="30" min="10" max="60" step="5" style="max-width:80px;" />
+            </div>
+            <div class="settings-row">
+                <label>背景图片</label>
+                <button class="btn btn-outline" id="bgUploadBtn">📷 上传背景</button>
+                <input type="file" id="bgInput" accept="image/*" />
+            </div>
+            <div class="settings-row">
+                <label>透明度</label>
+                <input type="range" id="bgOpacityRange" min="0" max="100" value="30" />
+                <span class="range-value" id="bgOpacityLabel">30%</span>
+            </div>
+            <div class="settings-hint">
+                💡 <a href="https://platform.moonshot.ai/" target="_blank">获取 Kimi Key</a> · 
+                <a href="https://platform.deepseek.com/" target="_blank">获取 DeepSeek Key</a>
+            </div>
+        </div>
+
+        <!-- 上传区（图片模式用） -->
+        <div class="upload-zone" id="uploadZone">
+            <div class="upload-placeholder">
+                <span class="upload-icon">📸</span>
+                <div class="upload-title">点击上传或拖拽图片</div>
+                <div class="upload-sub">支持 PNG / JPG / WEBP · 自动压缩</div>
+            </div>
+            <div class="upload-preview"><img id="previewImg" alt="预览" /></div>
+            <div class="upload-actions">
+                <button class="btn btn-primary" id="recognizeBtn">⚡ 识别公式</button>
+                <button class="btn btn-outline" id="reUploadBtn">重新上传</button>
+                <button class="btn btn-ghost" id="removeImageBtn">✕</button>
+            </div>
+            <div class="progress-wrap" id="progressWrap">
+                <div class="progress-bar" id="progressBar"></div>
+                <div class="progress-label" id="progressLabel">准备中...</div>
+            </div>
+        </div>
+
+        <!-- 结果区 -->
+        <div class="result-area" id="resultArea">
+            <!-- 单公式结果 -->
+            <div class="result-grid" id="singleResultGrid">
+                <div class="result-card">
+                    <div class="result-card-header">
+                        <span>📝 LaTeX 代码</span>
+                        <button class="btn btn-ghost" id="copyLatexBtn" style="padding:2px 12px;font-size:12px;">📋 复制</button>
+                    </div>
+                    <div class="result-card-body" id="latexResult"><span class="empty-hint">等待识别...</span></div>
+                </div>
+                <div class="result-card">
+                    <div class="result-card-header">
+                        <span>✨ 渲染预览</span>
+                        <button class="btn btn-ghost" id="copyRenderedBtn" style="padding:2px 12px;font-size:12px;">📋 复制源码</button>
+                    </div>
+                    <div class="result-card-body" id="renderResult"><span class="empty-hint">渲染预览将显示在这里</span></div>
+                </div>
+            </div>
+            <!-- 批量结果 -->
+            <div id="batchResultContainer" style="display:none;">
+                <div style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-weight:600; color:var(--text-secondary);">共 <span id="batchCount">0</span> 个公式</span>
+                    <button class="btn btn-success" id="copyAllBatchBtn">📋 复制全部 LaTeX</button>
+                </div>
+                <div id="batchTableWrapper"></div>
+            </div>
+            <!-- 文本整理模式 -->
+            <div class="text-mode-area" id="textModeArea">
+                <textarea id="textInput" placeholder="请粘贴包含公式的AI乱码文本..."></textarea>
+                <div class="text-actions">
+                    <button class="btn btn-primary" id="textProcessBtn">🧹 整理文本</button>
+                    <button class="btn btn-outline" id="textClearBtn">清空</button>
+                </div>
+                <div class="text-output" id="textOutput">
+                    <span class="empty-hint">整理后的文本将显示在这里</span>
+                </div>
+                <div class="text-output-actions">
+                    <button class="btn btn-ghost" id="copyTextOutputBtn" style="padding:2px 12px;font-size:12px;">📋 复制结果</button>
+                </div>
+            </div>
+            <!-- 公式助手模式 -->
+            <div class="chat-mode-area" id="chatModeArea">
+                <div class="chat-input-area">
+                    <input type="text" id="chatInput" placeholder="输入问题，如：勾股定理" />
+                    <button class="btn btn-primary" id="chatSendBtn">发送</button>
+                </div>
+                <div class="chat-output" id="chatOutput">
+                    <span class="empty-hint">输入问题，我将为您解答</span>
+                </div>
+                <div class="chat-actions">
+                    <button class="btn btn-ghost" id="copyChatLatexBtn" style="padding:2px 12px;font-size:12px;">📋 复制 LaTeX 代码</button>
+                    <button class="btn btn-ghost" id="copyChatFullBtn" style="padding:2px 12px;font-size:12px;">📋 复制全部回答</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="njupt-watermark" id="footerEditable">
+            <span id="footerDisplay">自制网页，如有不便，请多见谅</span>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+    (function() {
+        'use strict';
+
+        // ===== DOM 引用 =====
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
+
+        const previewImg = document.getElementById('previewImg');
+        const recognizeBtn = document.getElementById('recognizeBtn');
+        const reUploadBtn = document.getElementById('reUploadBtn');
+        const removeImageBtn = document.getElementById('removeImageBtn');
+        const progressWrap = document.getElementById('progressWrap');
+        const progressBar = document.getElementById('progressBar');
+        const progressLabel = document.getElementById('progressLabel');
+        const resultArea = document.getElementById('resultArea');
+        const singleResultGrid = document.getElementById('singleResultGrid');
+        const batchResultContainer = document.getElementById('batchResultContainer');
+        const batchTableWrapper = document.getElementById('batchTableWrapper');
+        const batchCount = document.getElementById('batchCount');
+        const latexResult = document.getElementById('latexResult');
+        const renderResult = document.getElementById('renderResult');
+        const copyLatexBtn = document.getElementById('copyLatexBtn');
+        const copyRenderedBtn = document.getElementById('copyRenderedBtn');
+        const copyAllBatchBtn = document.getElementById('copyAllBatchBtn');
+        const settingsToggle = document.getElementById('settingsToggle');
+        const settingsPanel = document.getElementById('settingsPanel');
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        const deepseekKeyInput = document.getElementById('deepseekKeyInput');
+        const apiEndpointSelect = document.getElementById('apiEndpointSelect');
+        const maxSizeRange = document.getElementById('maxSizeRange');
+        const maxSizeLabel = document.getElementById('maxSizeLabel');
+        const timeoutInput = document.getElementById('timeoutInput');
+        const apiStatus = document.getElementById('apiStatus');
+        const toastContainer = document.getElementById('toastContainer');
+        const avatarWrapper = document.getElementById('avatarWrapper');
+        const avatarImg = document.getElementById('avatarImg');
+        const avatarPlaceholder = document.getElementById('avatarPlaceholder');
+        const avatarInput = document.getElementById('avatarInput');
+        const bgLayer = document.getElementById('bg-layer');
+        const bgInput = document.getElementById('bgInput');
+        const bgUploadBtn = document.getElementById('bgUploadBtn');
+        const bgOpacityRange = document.getElementById('bgOpacityRange');
+        const bgOpacityLabel = document.getElementById('bgOpacityLabel');
+        const titleDisplay = document.getElementById('titleDisplay');
+        const subDisplay = document.getElementById('subDisplay');
+        const footerDisplay = document.getElementById('footerDisplay');
+        const modeTabs = document.querySelectorAll('.mode-tab');
+        // 文本
+        const textModeArea = document.getElementById('textModeArea');
+        const textInput = document.getElementById('textInput');
+        const textOutput = document.getElementById('textOutput');
+        const textProcessBtn = document.getElementById('textProcessBtn');
+        const textClearBtn = document.getElementById('textClearBtn');
+        const copyTextOutputBtn = document.getElementById('copyTextOutputBtn');
+        // 聊天
+        const chatModeArea = document.getElementById('chatModeArea');
+        const chatInput = document.getElementById('chatInput');
+        const chatOutput = document.getElementById('chatOutput');
+        const chatSendBtn = document.getElementById('chatSendBtn');
+        const copyChatLatexBtn = document.getElementById('copyChatLatexBtn');
+        const copyChatFullBtn = document.getElementById('copyChatFullBtn');
+
+        // ===== 状态 =====
+        let currentImageData = null;
+        let currentImageType = 'image/jpeg';
+        let isRecognizing = false;
+        let lastResultValid = false;
+        let batchFormulas = [];
+        let currentMode = 'single';
+        let lastTextResult = '';
+        let lastChatLatex = '';
+        let lastChatFull = '';
+
+        const SETTINGS_KEY = 'ocr_fast_settings';
+        const AVATAR_KEY = 'ocr_avatar';
+        const BG_KEY = 'ocr_background';
+        const TITLE_KEY = 'ocr_title_text';
+        const SUB_KEY = 'ocr_sub_text';
+        const FOOTER_KEY = 'ocr_footer_text';
+        const DEFAULT_TITLE = 'mathcheap用不了所以我自己写了一个';
+        const DEFAULT_SUB = '点击设置您的个性签名';
+        const DEFAULT_FOOTER = '自制网页，如有不便，请多见谅';
+        const DEFAULT_API_KEY = 'sk-UjXtiZCnRsdKEr14A2F9VwocRzrIPuDFHGJ8nhqo3wAHNkmW';
+
+        // ===== 文字编辑 =====
+        function makeEditable(displayEl, storageKey, defaultText, onSave) {
+            let isEditing = false;
+            const container = displayEl.parentElement;
+            function startEdit() {
+                if (isEditing) return;
+                isEditing = true;
+                const currentText = displayEl.textContent;
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = currentText;
+                input.style.width = '100%';
+                displayEl.style.display = 'none';
+                container.insertBefore(input, displayEl);
+                input.focus();
+                input.select();
+                function finishEdit() {
+                    const newText = input.value.trim() || defaultText;
+                    displayEl.textContent = newText;
+                    displayEl.style.display = '';
+                    input.remove();
+                    isEditing = false;
+                    try { localStorage.setItem(storageKey, newText); } catch (_) {}
+                    if (onSave) onSave(newText);
+                }
+                input.addEventListener('blur', finishEdit);
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+                    if (e.key === 'Escape') { input.value = displayEl.textContent; input.blur(); }
+                });
+            }
+            container.addEventListener('dblclick', (e) => { e.preventDefault(); startEdit(); });
+        }
+
+        function loadTexts() {
+            try {
+                const title = localStorage.getItem(TITLE_KEY);
+                titleDisplay.textContent = title || DEFAULT_TITLE;
+                const sub = localStorage.getItem(SUB_KEY);
+                subDisplay.textContent = sub || DEFAULT_SUB;
+                const footer = localStorage.getItem(FOOTER_KEY);
+                footerDisplay.textContent = footer || DEFAULT_FOOTER;
+            } catch (_) {}
+        }
+
+        // ===== 设置 =====
+        function loadSettings() {
+            try {
+                const raw = localStorage.getItem(SETTINGS_KEY);
+                if (raw) {
+                    const data = JSON.parse(raw);
+                    if (data.apiKey) apiKeyInput.value = data.apiKey;
+                    if (data.deepseekKey) deepseekKeyInput.value = data.deepseekKey;
+                    if (data.endpoint) apiEndpointSelect.value = data.endpoint;
+                    if (data.maxSize) { maxSizeRange.value = data.maxSize; maxSizeLabel.textContent = data.maxSize; }
+                    if (data.timeout) timeoutInput.value = data.timeout;
+                } else {
+                    apiKeyInput.value = DEFAULT_API_KEY;
+                    saveSettings();
+                }
+                loadBackground();
+                loadAvatar();
+                loadTexts();
+            } catch (_) {}
+        }
+        function saveSettings() {
+            try {
+                localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+                    apiKey: apiKeyInput.value.trim(),
+                    deepseekKey: deepseekKeyInput.value.trim(),
+                    endpoint: apiEndpointSelect.value,
+                    maxSize: parseInt(maxSizeRange.value),
+                    timeout: parseInt(timeoutInput.value),
+                }));
+            } catch (_) {}
+        }
+        function getApiKey() { return apiKeyInput.value.trim(); }
+        function getDeepSeekKey() { return deepseekKeyInput.value.trim(); }
+        function getEndpoint() { return apiEndpointSelect.value; }
+        function getMaxSize() { return parseInt(maxSizeRange.value) || 768; }
+        function getTimeout() { return (parseInt(timeoutInput.value) || 30) * 1000; }
+        function updateApiStatus() {
+            const key = getApiKey();
+            apiStatus.textContent = key ? '🟢 已配置' : '🔴 未配置';
+            apiStatus.style.color = key ? '#2ecc71' : '#e74c3c';
+        }
+
+        // ===== 压缩工具 =====
+        function compressImageToDataURL(file, maxSize, quality) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let w = img.width, h = img.height;
+                        if (w > maxSize || h > maxSize) {
+                            const ratio = Math.min(maxSize / w, maxSize / h);
+                            w = Math.round(w * ratio);
+                            h = Math.round(h * ratio);
+                        }
+                        canvas.width = w; canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, w, h);
+                        const dataUrl = canvas.toDataURL('image/jpeg', quality || 0.8);
+                        resolve(dataUrl);
+                    };
+                    img.onerror = reject;
+                    img.src = e.target.result;
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // ===== 头像 =====
+        function loadAvatar() {
+            try {
+                const data = localStorage.getItem(AVATAR_KEY);
+                if (data) {
+                    avatarImg.src = data;
+                    avatarImg.style.display = 'block';
+                    avatarPlaceholder.style.display = 'none';
+                } else {
+                    avatarImg.style.display = 'none';
+                    avatarPlaceholder.style.display = 'block';
+                }
+            } catch (_) {}
+        }
+        function saveAvatar(dataUrl) {
+            try { localStorage.setItem(AVATAR_KEY, dataUrl); } catch (_) {}
+        }
+        async function handleAvatarFile(file) {
+            if (!file || !file.type.startsWith('image/')) { showToast('请上传图片', 'error'); return; }
+            try {
+                const dataUrl = await compressImageToDataURL(file, 200, 0.8);
+                avatarImg.src = dataUrl;
+                avatarImg.style.display = 'block';
+                avatarPlaceholder.style.display = 'none';
+                saveAvatar(dataUrl);
+                showToast('头像已更新', 'success');
+            } catch (err) {
+                showToast('处理失败: ' + err.message, 'error');
+            }
+        }
+
+        // ===== 背景 =====
+        function loadBackground() {
+            try {
+                const raw = localStorage.getItem(BG_KEY);
+                if (raw) {
+                    const data = JSON.parse(raw);
+                    if (data.url) {
+                        bgLayer.style.backgroundImage = `url(${data.url})`;
+                        bgLayer.style.opacity = (data.opacity || 30) / 100;
+                        bgOpacityRange.value = data.opacity || 30;
+                        bgOpacityLabel.textContent = (data.opacity || 30) + '%';
+                    } else {
+                        bgLayer.style.backgroundImage = 'none';
+                        bgLayer.style.opacity = 0;
+                    }
+                } else {
+                    bgLayer.style.backgroundImage = 'none';
+                    bgLayer.style.opacity = 0;
+                }
+            } catch (_) {}
+        }
+        function saveBackground(url, opacity) {
+            try { localStorage.setItem(BG_KEY, JSON.stringify({ url, opacity })); } catch (_) {}
+        }
+        async function handleBgFile(file) {
+            if (!file || !file.type.startsWith('image/')) { showToast('请上传图片', 'error'); return; }
+            try {
+                const dataUrl = await compressImageToDataURL(file, 800, 0.8);
+                const opacity = parseInt(bgOpacityRange.value) / 100;
+                bgLayer.style.backgroundImage = `url(${dataUrl})`;
+                bgLayer.style.opacity = opacity;
+                saveBackground(dataUrl, parseInt(bgOpacityRange.value));
+                showToast('背景已更新', 'success');
+            } catch (err) {
+                showToast('处理失败: ' + err.message, 'error');
+            }
+        }
+        bgOpacityRange.addEventListener('input', () => {
+            const val = parseInt(bgOpacityRange.value);
+            bgOpacityLabel.textContent = val + '%';
+            const opacity = val / 100;
+            bgLayer.style.opacity = opacity;
+            const currentBg = bgLayer.style.backgroundImage;
+            if (currentBg && currentBg !== 'none') {
+                try {
+                    const raw = localStorage.getItem(BG_KEY);
+                    if (raw) {
+                        const data = JSON.parse(raw);
+                        if (data.url) saveBackground(data.url, val);
+                    }
+                } catch (_) {}
+            }
+        });
+
+        // ===== 图片压缩（用于识别上传） =====
+        function compressImage(file, maxSize) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let w = img.width, h = img.height;
+                        if (w > maxSize || h > maxSize) {
+                            const ratio = Math.min(maxSize / w, maxSize / h);
+                            w = Math.round(w * ratio);
+                            h = Math.round(h * ratio);
+                        }
+                        canvas.width = w; canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, w, h);
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+                        resolve(dataUrl);
+                    };
+                    img.onerror = reject;
+                    img.src = e.target.result;
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // ===== 核心 Kimi API 调用 =====
+        async function callKimiAPI(messages, timeoutMs) {
+            const apiKey = getApiKey();
+            if (!apiKey) throw new Error('请配置 Kimi API Key');
+            const url = `${getEndpoint()}/chat/completions`;
+            const controller = new AbortController();
+            const timeout = timeoutMs || getTimeout();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+            const payload = {
+                model: 'kimi-k2.7-code-highspeed',
+                messages: messages,
+                max_tokens: 4096,
+            };
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`,
+                    },
+                    body: JSON.stringify(payload),
+                    signal: controller.signal,
+                });
+                clearTimeout(timeoutId);
+                if (!response.ok) {
+                    let errMsg = `HTTP ${response.status}`;
+                    try {
+                        const errData = await response.json();
+                        if (errData.error?.message) errMsg = errData.error.message;
+                    } catch (_) {}
+                    throw new Error(errMsg);
+                }
+                const data = await response.json();
+                const content = data.choices?.[0]?.message?.content || '';
+                if (!content.trim()) throw new Error('模型返回内容为空');
+                return content;
+            } catch (err) {
+                clearTimeout(timeoutId);
+                if (err.name === 'AbortError') {
+                    throw new Error('请求超时，请增加超时时间或检查网络');
+                }
+                throw err;
+            }
+        }
+
+        // ===== 单公式识别 =====
+        async function recognizeSingle() {
+            const imageData = currentImageData;
+            if (!imageData) throw new Error('请先上传图片');
+            const prompt = 'Extract the mathematical formula from the image. Output only the LaTeX code, no extra text, no markdown code blocks. If multiple formulas, output them in order.';
+            const msg = [{
+                role: 'user',
+                content: [
+                    { type: 'text', text: prompt },
+                    { type: 'image_url', image_url: { url: `data:${currentImageType};base64,${imageData}` } }
+                ]
+            }];
+            const raw = await callKimiAPI(msg);
+            let latex = raw.trim().replace(/```latex?/gi, '').replace(/```/g, '').trim();
+            if (!latex) throw new Error('未识别到公式');
+            return { type: 'single', latex };
+        }
+
+        // ===== 批量识别 =====
+        async function recognizeBatch() {
+            const imageData = currentImageData;
+            if (!imageData) throw new Error('请先上传图片');
+            const prompt = 'Extract ALL mathematical formulas from the image. Output ONLY a JSON array of LaTeX strings. Do not include any other text, explanations, or markdown. Example: ["x^2+y^2=z^2", "\\\\int_0^1 x dx"]. If no formulas, output [].';
+            const msg = [{
+                role: 'user',
+                content: [
+                    { type: 'text', text: prompt },
+                    { type: 'image_url', image_url: { url: `data:${currentImageType};base64,${imageData}` } }
+                ]
+            }];
+            const raw = await callKimiAPI(msg);
+            let jsonStr = raw.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
+            let formulas = [];
+            try {
+                const parsed = JSON.parse(jsonStr);
+                if (Array.isArray(parsed)) {
+                    formulas = parsed.filter(f => typeof f === 'string' && f.trim() !== '');
+                }
+            } catch (_) {
+                formulas = raw.split('\n')
+                    .map(line => line.trim().replace(/```latex?/gi, '').replace(/```/g, '').trim())
+                    .filter(line => line.length > 0);
+            }
+            if (formulas.length === 0) throw new Error('未识别到任何公式');
+            return { type: 'batch', formulas };
+        }
+
+        // ===== 整理AI乱码 =====
+        async function processText(rawText) {
+            if (!rawText.trim()) throw new Error('请粘贴要整理的文本');
+            const prompt = `Please format the following text containing formulas clearly. Requirements:
+1. Keep the original text order and paragraph structure.
+2. Represent all mathematical formulas (inline and display) in LaTeX, wrapped in $...$ (inline) or $$...$$ (display).
+3. Ensure the LaTeX code is correct and preserve non-formula text.
+4. Only output the formatted text, no additional comments or explanations.
+
+Original text:
+${rawText}`;
+            const msg = [{ role: 'user', content: prompt }];
+            const result = await callKimiAPI(msg);
+            if (!result.trim()) throw new Error('整理结果为空');
+            return result;
+        }
+
+        // ===== 公式助手（DeepSeek） =====
+        async function chatWithDeepSeek(question) {
+            const apiKey = getDeepSeekKey();
+            if (!apiKey) throw new Error('请配置 DeepSeek API Key');
+            const url = 'https://api.deepseek.com/v1/chat/completions';
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+            const systemPrompt = `你是一个“公式识别助手”，专门帮助用户理解和使用这个网页工具。
+本网页提供以下功能：
+1. 单公式识别：上传包含一个公式的图片，返回 LaTeX 代码并渲染。
+2. 批量公式识别：上传包含多个公式的图片，返回每个公式的 LaTeX 代码列表，并以表格展示。
+3. 整理AI乱码：粘贴包含公式的杂乱文本，将公式替换为标准的 LaTeX 格式（行内 $...$，独立 $$...$$），保留原文顺序。
+4. 公式助手：即你，可以回答关于数学公式、LaTeX 代码的问题，也可以根据用户输入的公式名称（如“勾股定理”）输出对应的公式表达式和 LaTeX 代码。
+
+当用户询问某个公式（如“勾股定理”）时，请给出公式的数学表达式和对应的 LaTeX 代码。输出时，请用 Markdown 代码块 \`\`\`latex ... \`\`\` 包含 LaTeX 代码，并在前面用普通文本说明公式。不要用其他格式。`;
+
+            const payload = {
+                model: 'deepseek-chat',
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: question }
+                ],
+                max_tokens: 1024,
+            };
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`,
+                    },
+                    body: JSON.stringify(payload),
+                    signal: controller.signal,
+                });
+                clearTimeout(timeoutId);
+                if (!response.ok) {
+                    let errMsg = `HTTP ${response.status}`;
+                    try {
+                        const errData = await response.json();
+                        if (errData.error?.message) errMsg = errData.error.message;
+                    } catch (_) {}
+                    throw new Error(errMsg);
+                }
+                const data = await response.json();
+                const content = data.choices?.[0]?.message?.content || '';
+                if (!content.trim()) throw new Error('回答为空');
+                return content;
+            } catch (err) {
+                clearTimeout(timeoutId);
+                if (err.name === 'AbortError') {
+                    throw new Error('请求超时，请稍后重试');
+                }
+                throw err;
+            }
+        }
+
+        // ===== 识别入口（统一调度） =====
+        async function recognizeImage() {
+            if (isRecognizing) return;
+            if (!currentImageData) { showToast('请先上传图片', 'error'); return; }
+            if (!getApiKey()) { showToast('请设置 Kimi API Key', 'error'); settingsPanel.classList.add('open'); return; }
+
+            isRecognizing = true;
+            recognizeBtn.disabled = true;
+            progressWrap.classList.add('active');
+            progressBar.style.width = '0%';
+            progressLabel.textContent = '准备识别...';
+
+            try {
+                progressBar.style.width = '30%';
+                progressLabel.textContent = '调用高速模型...';
+                let result;
+                if (currentMode === 'single') {
+                    result = await recognizeSingle();
+                } else if (currentMode === 'batch') {
+                    result = await recognizeBatch();
+                } else {
+                    throw new Error('未知模式');
+                }
+                progressBar.style.width = '100%';
+                progressLabel.textContent = '✅ 完成';
+
+                if (result.type === 'single') {
+                    displaySingleResult(result.latex);
+                    showToast('✅ 识别成功 (单公式)', 'success');
+                } else {
+                    displayBatchResult(result.formulas);
+                    showToast(`✅ 识别成功 (${result.formulas.length} 个公式)`, 'success');
+                }
+            } catch (err) {
+                progressLabel.textContent = '❌ 失败';
+                showToast('识别失败: ' + err.message, 'error');
+                if (currentMode === 'single') {
+                    latexResult.textContent = '错误: ' + err.message;
+                    renderResult.innerHTML = `<span style="color:#e74c3c;">${err.message}</span>`;
+                    resultArea.classList.add('active');
+                    singleResultGrid.style.display = 'grid';
+                    batchResultContainer.style.display = 'none';
+                    lastResultValid = false;
+                } else {
+                    batchTableWrapper.innerHTML = `<div style="color:#e74c3c;padding:20px;">${err.message}</div>`;
+                    batchCount.textContent = '0';
+                    resultArea.classList.add('active');
+                    singleResultGrid.style.display = 'none';
+                    batchResultContainer.style.display = 'block';
+                    lastResultValid = false;
+                }
+            } finally {
+                isRecognizing = false;
+                recognizeBtn.disabled = false;
+                setTimeout(() => {
+                    progressWrap.classList.remove('active');
+                    progressBar.style.width = '0%';
+                }, 600);
+            }
+        }
+
+        // ===== 显示单公式 =====
+        function displaySingleResult(latex) {
+            if (!latex) { lastResultValid = false; return; }
+            singleResultGrid.style.display = 'grid';
+            batchResultContainer.style.display = 'none';
+            textModeArea.style.display = 'none';
+            chatModeArea.style.display = 'none';
+            if (typeof katex === 'undefined') {
+                renderResult.innerHTML = '<span style="color:#e74c3c;">KaTeX 加载中，请稍后</span>';
+                latexResult.textContent = latex;
+                lastResultValid = true;
+                resultArea.classList.add('active');
+                return;
+            }
+            latexResult.textContent = latex;
+            try {
+                const el = document.createElement('div');
+                el.className = 'latex-render';
+                const displayMode = latex.includes('\\begin') || latex.includes('\\[') || latex.length > 80;
+                katex.render(latex, el, { throwOnError: false, displayMode, trust: true,
+                    macros: { "\\R":"\\mathbb{R}","\\N":"\\mathbb{N}","\\Z":"\\mathbb{Z}","\\Q":"\\mathbb{Q}","\\C":"\\mathbb{C}" }
+                });
+                renderResult.innerHTML = '';
+                renderResult.appendChild(el);
+            } catch (err) {
+                renderResult.innerHTML = `<span style="color:#e74c3c;">渲染失败: ${err.message}</span>`;
+            }
+            lastResultValid = true;
+            resultArea.classList.add('active');
+        }
+
+        // ===== 显示批量 =====
+        function displayBatchResult(formulas) {
+            batchFormulas = formulas;
+            singleResultGrid.style.display = 'none';
+            batchResultContainer.style.display = 'block';
+            textModeArea.style.display = 'none';
+            chatModeArea.style.display = 'none';
+            batchCount.textContent = formulas.length;
+
+            let html = '<table class="batch-result-table"><thead><tr><th style="width:60%;">✨ 公式渲染</th><th style="width:40%;">📝 LaTeX 代码</th><th style="width:80px;">操作</th></tr></thead><tbody>';
+            formulas.forEach((latex, idx) => {
+                let rendered = '';
+                try {
+                    if (typeof katex !== 'undefined') {
+                        const el = document.createElement('div');
+                        el.className = 'formula-render';
+                        katex.render(latex, el, { throwOnError: false, displayMode: false });
+                        rendered = el.innerHTML;
+                    } else {
+                        rendered = '<span style="color:#999;">加载中...</span>';
+                    }
+                } catch (_) {
+                    rendered = '<span style="color:#e74c3c;">渲染失败</span>';
+                }
+                const escapedLatex = latex.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                html += `
+                    <tr>
+                        <td><div class="formula-render">${rendered}</div></td>
+                        <td><div class="formula-latex">${escapedLatex}</div></td>
+                        <td><button class="copy-btn-sm" data-latex="${escapedLatex}">📋 复制</button></td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table>';
+            batchTableWrapper.innerHTML = html;
+
+            batchTableWrapper.querySelectorAll('.copy-btn-sm').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const latex = btn.getAttribute('data-latex');
+                    copyText(latex, '公式已复制');
+                });
+            });
+
+            lastResultValid = true;
+            resultArea.classList.add('active');
+        }
+
+        // ===== 文本整理显示 =====
+        function displayTextResult(result) {
+            lastTextResult = result;
+            textOutput.innerHTML = result;
+            resultArea.classList.add('active');
+            singleResultGrid.style.display = 'none';
+            batchResultContainer.style.display = 'none';
+            textModeArea.style.display = 'block';
+            chatModeArea.style.display = 'none';
+            lastResultValid = true;
+        }
+
+        // ===== 聊天显示（正确渲染，不渲染代码块） =====
+        function displayChatResult(result) {
+            lastChatFull = result;
+            // 1. 提取所有 ```latex ... ``` 块，替换为占位符，并保存内容
+            let latexBlocks = [];
+            let processed = result.replace(/```latex\s*([\s\S]*?)```/g, (match, content) => {
+                latexBlocks.push(content.trim());
+                return '___LATEX_BLOCK_PLACEHOLDER___';
+            });
+
+            // 2. 渲染剩余的 $$...$$ 和 $...$ 公式
+            let htmlContent = processed;
+            if (typeof katex !== 'undefined') {
+                // 渲染 $$...$$ 块
+                htmlContent = htmlContent.replace(/\$\$([\s\S]*?)\$\$/g, (match, content) => {
+                    try {
+                        return katex.renderToString(content.trim(), { throwOnError: false, displayMode: true });
+                    } catch (e) {
+                        return match;
+                    }
+                });
+                // 渲染 $...$ 块
+                htmlContent = htmlContent.replace(/\$([^\$]*?)\$/g, (match, content) => {
+                    try {
+                        return katex.renderToString(content.trim(), { throwOnError: false, displayMode: false });
+                    } catch (e) {
+                        return match;
+                    }
+                });
+            }
+
+            // 3. 将占位符替换为带样式的代码块
+            let blockIndex = 0;
+            htmlContent = htmlContent.replace(/___LATEX_BLOCK_PLACEHOLDER___/g, () => {
+                const code = latexBlocks[blockIndex] || '';
+                blockIndex++;
+                return `<pre class="latex-code-block">${escapeHtml(code)}</pre>`;
+            });
+
+            // 4. 保存第一个代码块的内容作为 LaTeX 代码（用于复制）
+            if (latexBlocks.length > 0) {
+                lastChatLatex = latexBlocks[0];
+            } else {
+                // 如果没有代码块，尝试从 $$...$$ 中提取
+                const firstFormula = result.match(/\$\$([\s\S]*?)\$\$/);
+                if (firstFormula) {
+                    lastChatLatex = firstFormula[1].trim();
+                } else {
+                    const inlineFormula = result.match(/\$([^\$]*?)\$/);
+                    if (inlineFormula) {
+                        lastChatLatex = inlineFormula[1].trim();
+                    } else {
+                        lastChatLatex = result; // 后备
+                    }
+                }
+            }
+
+            chatOutput.innerHTML = htmlContent;
+            resultArea.classList.add('active');
+            singleResultGrid.style.display = 'none';
+            batchResultContainer.style.display = 'none';
+            textModeArea.style.display = 'none';
+            chatModeArea.style.display = 'block';
+            lastResultValid = true;
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        // ===== 复制全部批量 =====
+        function copyAllBatch() {
+            if (!batchFormulas.length) { showToast('没有公式可复制', 'error'); return; }
+            const allLatex = batchFormulas.join('\n\n');
+            copyText(allLatex, '所有 LaTeX 已复制');
+        }
+
+        // ===== 复制通用 =====
+        function copyText(text, successMsg = '已复制') {
+            if (!text) { showToast('无内容', 'error'); return; }
+            if (navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(text).then(() => showToast(successMsg, 'success'))
+                    .catch(() => fallbackCopy(text, successMsg));
+            } else {
+                fallbackCopy(text, successMsg);
+            }
+        }
+        function fallbackCopy(text, successMsg) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed'; ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); showToast(successMsg, 'success'); } catch (_) { showToast('复制失败', 'error'); }
+            ta.remove();
+        }
+
+        // ===== 图片处理 =====
+        async function handleFile(file) {
+            if (!file || !file.type.startsWith('image/')) { showToast('请上传图片', 'error'); return; }
+            try {
+                showToast('压缩中...', 'info');
+                const maxSize = getMaxSize();
+                const dataUrl = await compressImage(file, maxSize);
+                const comma = dataUrl.indexOf(',');
+                if (comma === -1) throw new Error('格式错误');
+                currentImageType = 'image/jpeg';
+                currentImageData = dataUrl.slice(comma + 1);
+                previewImg.src = dataUrl;
+                uploadZone.classList.add('has-image');
+                resultArea.classList.remove('active');
+                latexResult.innerHTML = '<span class="empty-hint">等待识别...</span>';
+                renderResult.innerHTML = '<span class="empty-hint">渲染预览将显示在这里</span>';
+                batchTableWrapper.innerHTML = '';
+                batchCount.textContent = '0';
+                textOutput.innerHTML = '<span class="empty-hint">整理后的文本将显示在这里</span>';
+                textInput.value = '';
+                chatOutput.innerHTML = '<span class="empty-hint">输入问题，我将为您解答</span>';
+                chatInput.value = '';
+                lastResultValid = false;
+                showToast('图片已加载，点击识别', 'success');
+            } catch (err) {
+                showToast('图片处理失败: ' + err.message, 'error');
+            }
+        }
+
+        function clearImage() {
+            currentImageData = null;
+            previewImg.src = '';
+            uploadZone.classList.remove('has-image');
+            resultArea.classList.remove('active');
+            latexResult.innerHTML = '<span class="empty-hint">等待识别...</span>';
+            renderResult.innerHTML = '<span class="empty-hint">渲染预览将显示在这里</span>';
+            batchTableWrapper.innerHTML = '';
+            batchCount.textContent = '0';
+            textOutput.innerHTML = '<span class="empty-hint">整理后的文本将显示在这里</span>';
+            textInput.value = '';
+            chatOutput.innerHTML = '<span class="empty-hint">输入问题，我将为您解答</span>';
+            chatInput.value = '';
+            lastResultValid = false;
+            progressWrap.classList.remove('active');
+            progressBar.style.width = '0%';
+            recognizeBtn.disabled = false;
+            isRecognizing = false;
+        }
+
+        // ===== Toast =====
+        function showToast(msg, type='info') {
+            const icons = { success:'✅', error:'❌', info:'💡' };
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `<span>${icons[type]||'💡'}</span><span>${msg}</span>`;
+            toastContainer.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(10px)';
+                setTimeout(() => toast.remove(), 250);
+            }, 2500);
+        }
+
+        // ===== 模式切换 =====
+        function switchMode(mode) {
+            currentMode = mode;
+            modeTabs.forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.mode === mode);
+            });
+            if (mode === 'text') {
+                uploadZone.style.display = 'none';
+                singleResultGrid.style.display = 'none';
+                batchResultContainer.style.display = 'none';
+                textModeArea.style.display = 'block';
+                chatModeArea.style.display = 'none';
+                recognizeBtn.style.display = 'none';
+                progressWrap.style.display = 'none';
+                resultArea.classList.add('active');
+                if (currentImageData) {
+                    clearImage();
+                }
+                textOutput.innerHTML = '<span class="empty-hint">整理后的文本将显示在这里</span>';
+                lastResultValid = false;
+            } else if (mode === 'chat') {
+                uploadZone.style.display = 'none';
+                singleResultGrid.style.display = 'none';
+                batchResultContainer.style.display = 'none';
+                textModeArea.style.display = 'none';
+                chatModeArea.style.display = 'block';
+                recognizeBtn.style.display = 'none';
+                progressWrap.style.display = 'none';
+                resultArea.classList.add('active');
+                if (currentImageData) {
+                    clearImage();
+                }
+                chatOutput.innerHTML = '<span class="empty-hint">输入问题，我将为您解答</span>';
+                lastResultValid = false;
+            } else {
+                // single / batch
+                uploadZone.style.display = 'block';
+                recognizeBtn.style.display = 'inline-flex';
+                textModeArea.style.display = 'none';
+                chatModeArea.style.display = 'none';
+                progressWrap.style.display = 'block';
+                if (mode === 'single') {
+                    recognizeBtn.textContent = '⚡ 识别公式';
+                    singleResultGrid.style.display = 'grid';
+                    batchResultContainer.style.display = 'none';
+                } else if (mode === 'batch') {
+                    recognizeBtn.textContent = '📚 批量识别';
+                    singleResultGrid.style.display = 'none';
+                    batchResultContainer.style.display = 'block';
+                }
+                resultArea.classList.remove('active');
+                latexResult.innerHTML = '<span class="empty-hint">等待识别...</span>';
+                renderResult.innerHTML = '<span class="empty-hint">渲染预览将显示在这里</span>';
+                batchTableWrapper.innerHTML = '';
+                batchCount.textContent = '0';
+                lastResultValid = false;
+                batchFormulas = [];
+            }
+        }
+
+        // ===== 事件绑定 =====
+        function bindEvents() {
+            // 模式切换
+            modeTabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const mode = tab.dataset.mode;
+                    if (mode !== currentMode) switchMode(mode);
+                });
+            });
+
+            // 上传区
+            uploadZone.addEventListener('click', (e) => {
+                if (e.target.closest('.upload-actions')) return;
+                if (currentImageData) return;
+                fileInput.click();
+            });
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files.length) handleFile(fileInput.files[0]);
+                fileInput.value = '';
+            });
+            uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+            uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+            uploadZone.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                uploadZone.classList.remove('drag-over');
+                if (e.dataTransfer.files.length) await handleFile(e.dataTransfer.files[0]);
+            });
+
+            recognizeBtn.addEventListener('click', recognizeImage);
+            reUploadBtn.addEventListener('click', () => fileInput.click());
+            removeImageBtn.addEventListener('click', clearImage);
+
+            // 单公式复制
+            copyLatexBtn.addEventListener('click', () => {
+                if (lastResultValid && currentMode === 'single') {
+                    const text = latexResult.textContent;
+                    if (text && !text.includes('等待识别') && !text.includes('错误')) copyText(text, 'LaTeX 已复制');
+                    else showToast('无可复制内容', 'error');
+                } else showToast('无可复制内容', 'error');
+            });
+            copyRenderedBtn.addEventListener('click', () => {
+                if (lastResultValid && currentMode === 'single') {
+                    const text = latexResult.textContent;
+                    if (text && !text.includes('等待识别') && !text.includes('错误')) copyText(text, 'LaTeX 源码已复制');
+                    else showToast('无可复制内容', 'error');
+                } else showToast('无可复制内容', 'error');
+            });
+
+            // 批量全部复制
+            copyAllBatchBtn.addEventListener('click', copyAllBatch);
+
+            // 文本模式
+            textProcessBtn.addEventListener('click', async () => {
+                if (isRecognizing) return;
+                const text = textInput.value;
+                if (!text.trim()) { showToast('请粘贴要整理的文本', 'error'); return; }
+                if (!getApiKey()) { showToast('请设置 Kimi API Key', 'error'); settingsPanel.classList.add('open'); return; }
+
+                isRecognizing = true;
+                textProcessBtn.disabled = true;
+                progressWrap.style.display = 'block';
+                progressWrap.classList.add('active');
+                progressBar.style.width = '0%';
+                progressLabel.textContent = '整理中...';
+                textOutput.innerHTML = '<span style="color:var(--text-secondary);">处理中...</span>';
+                resultArea.classList.add('active');
+                singleResultGrid.style.display = 'none';
+                batchResultContainer.style.display = 'none';
+                textModeArea.style.display = 'block';
+                chatModeArea.style.display = 'none';
+
+                try {
+                    progressBar.style.width = '40%';
+                    progressLabel.textContent = '调用AI模型...';
+                    const result = await processText(text);
+                    progressBar.style.width = '100%';
+                    progressLabel.textContent = '✅ 完成';
+                    displayTextResult(result);
+                    showToast('✅ 整理完成', 'success');
+                } catch (err) {
+                    progressLabel.textContent = '❌ 失败';
+                    showToast('整理失败: ' + err.message, 'error');
+                    textOutput.innerHTML = `<span style="color:#e74c3c;">错误: ${err.message}</span>`;
+                    resultArea.classList.add('active');
+                    singleResultGrid.style.display = 'none';
+                    batchResultContainer.style.display = 'none';
+                    textModeArea.style.display = 'block';
+                    lastResultValid = false;
+                } finally {
+                    isRecognizing = false;
+                    textProcessBtn.disabled = false;
+                    setTimeout(() => {
+                        progressWrap.classList.remove('active');
+                        progressBar.style.width = '0%';
+                    }, 600);
+                }
+            });
+
+            textClearBtn.addEventListener('click', () => {
+                textInput.value = '';
+                textOutput.innerHTML = '<span class="empty-hint">整理后的文本将显示在这里</span>';
+                lastTextResult = '';
+                lastResultValid = false;
+            });
+
+            copyTextOutputBtn.addEventListener('click', () => {
+                const text = textOutput.textContent;
+                if (text && !text.includes('整理后的文本将显示在这里') && !text.includes('错误')) {
+                    copyText(text, '文本已复制');
+                } else {
+                    showToast('没有可复制的内容', 'error');
+                }
+            });
+
+            // 公式助手
+            chatSendBtn.addEventListener('click', async () => {
+                const question = chatInput.value.trim();
+                if (!question) { showToast('请输入问题', 'error'); return; }
+                if (!getDeepSeekKey()) { showToast('请设置 DeepSeek API Key', 'error'); settingsPanel.classList.add('open'); return; }
+
+                chatOutput.innerHTML = '思考中...';
+                resultArea.classList.add('active');
+                singleResultGrid.style.display = 'none';
+                batchResultContainer.style.display = 'none';
+                textModeArea.style.display = 'none';
+                chatModeArea.style.display = 'block';
+
+                try {
+                    const answer = await chatWithDeepSeek(question);
+                    displayChatResult(answer);
+                } catch (err) {
+                    chatOutput.innerHTML = `<span style="color:#e74c3c;">错误: ${err.message}</span>`;
+                    showToast('问答失败: ' + err.message, 'error');
+                }
+            });
+
+            chatInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    chatSendBtn.click();
+                }
+            });
+
+            // 聊天复制按钮
+            copyChatLatexBtn.addEventListener('click', () => {
+                if (lastChatLatex) {
+                    copyText(lastChatLatex, 'LaTeX 代码已复制');
+                } else {
+                    showToast('没有可复制的 LaTeX 代码', 'error');
+                }
+            });
+            copyChatFullBtn.addEventListener('click', () => {
+                if (lastChatFull) {
+                    copyText(lastChatFull, '全部回答已复制');
+                } else {
+                    showToast('没有可复制的内容', 'error');
+                }
+            });
+
+            // 设置
+            settingsToggle.addEventListener('click', () => {
+                settingsPanel.classList.toggle('open');
+                settingsToggle.textContent = settingsPanel.classList.contains('open') ? '⚙️ 收起' : '⚙️ 设置';
+                if (!settingsPanel.classList.contains('open')) { saveSettings(); updateApiStatus(); }
+            });
+            apiKeyInput.addEventListener('change', () => { saveSettings(); updateApiStatus(); });
+            deepseekKeyInput.addEventListener('change', saveSettings);
+            apiEndpointSelect.addEventListener('change', saveSettings);
+            maxSizeRange.addEventListener('input', () => { maxSizeLabel.textContent = maxSizeRange.value; saveSettings(); });
+            timeoutInput.addEventListener('change', saveSettings);
+
+            // 头像
+            avatarWrapper.addEventListener('click', () => avatarInput.click());
+            avatarInput.addEventListener('change', () => {
+                if (avatarInput.files.length) {
+                    handleAvatarFile(avatarInput.files[0]);
+                    avatarInput.value = '';
+                }
+            });
+
+            // 背景
+            bgUploadBtn.addEventListener('click', (e) => { e.stopPropagation(); bgInput.click(); });
+            bgInput.addEventListener('change', () => {
+                if (bgInput.files.length) {
+                    handleBgFile(bgInput.files[0]);
+                    bgInput.value = '';
+                }
+            });
+
+            // 快捷键
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && e.ctrlKey && currentImageData) {
+                    if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+                    e.preventDefault();
+                    recognizeImage();
+                }
+                if (e.key === 'Enter' && e.ctrlKey && currentMode === 'text') {
+                    if (e.target.tagName === 'TEXTAREA') {
+                        e.preventDefault();
+                        textProcessBtn.click();
+                    }
+                }
+            });
+            document.addEventListener('paste', (e) => {
+                const items = e.clipboardData?.items;
+                if (!items) return;
+                for (const item of items) {
+                    if (item.type.startsWith('image/')) {
+                        const file = item.getAsFile();
+                        if (file) { handleFile(file); showToast('已粘贴图片', 'info'); break; }
+                    }
+                }
+            });
+        }
+
+        // ===== 初始化 =====
+        makeEditable(titleDisplay, TITLE_KEY, DEFAULT_TITLE);
+        makeEditable(subDisplay, SUB_KEY, DEFAULT_SUB);
+        makeEditable(footerDisplay, FOOTER_KEY, DEFAULT_FOOTER);
+
+        loadSettings();
+        updateApiStatus();
+        bindEvents();
+        switchMode('single');
+        textModeArea.style.display = 'none';
+        chatModeArea.style.display = 'none';
+        console.log('📐 自定义公式OCR 已加载');
+    })();
+    </script>
+</body>
+</html>
